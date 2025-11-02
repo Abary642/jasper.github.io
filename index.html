@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>哈希值计算工具</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        .container { max-width: 600px; margin: 20px auto; padding: 0 20px; }
+        h1 { text-align: center; margin: 20px 0; color: #2c3e50; }
+        .input-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #34495e; }
+        select, input[type="text"], button { 
+            width: 100%; padding: 10px; border: 1px solid #ddd; 
+            border-radius: 4px; font-size: 16px; transition: border 0.3s;
+        }
+        select:focus, input[type="text"]:focus { border-color: #3498db; outline: none; }
+        button { background: #3498db; color: white; border: none; cursor: pointer; transition: background 0.3s; }
+        button:hover { background: #2980b9; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .result { margin-top: 20px; padding: 15px; border: 1px solid #eee; border-radius: 4px; background: #fdfdfd; }
+        .success { color: #27ae60; }
+        .error { color: #e74c3c; }
+        .stats { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; color: #34495e; }
+        .records { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; }
+        #recordsList { max-height: 300px; overflow-y: auto; margin-top: 10px; }
+        #recordsList div { padding: 10px; border-bottom: 1px solid #eee; margin-bottom: 8px; background: white; border-radius: 2px; }
+        #fileName { color: #7f8c8d; font-size: 14px; }
+        /* 新增：优化时间显示样式 */
+        .record-time { color: #7f8c8d; font-size: 14px; margin-left: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>哈希值计算工具</h1>
+
+        <!-- 计算类型选择 -->
+        <div class="input-group">
+            <label>计算类型</label>
+            <select id="inputType">
+                <option value="string">字符串哈希</option>
+                <option value="file">文件哈希</option>
+            </select>
+        </div>
+
+        <!-- 字符串输入 -->
+        <div class="input-group" id="stringInputGroup">
+            <label>输入字符串</label>
+            <input type="text" id="inputStr" placeholder="例如：测试哈希计算" autocomplete="off">
+        </div>
+
+        <!-- 文件输入（默认隐藏） -->
+        <div class="input-group" id="fileInputGroup" style="display: none;">
+            <label>选择文件</label>
+            <input type="file" id="inputFile">
+            <p id="fileName"></p>
+        </div>
+
+        <!-- 算法选择（value为后端需要的英文，显示为中文） -->
+        <div class="input-group">
+            <label>哈希算法</label>
+            <select id="algorithm">
+                <option value="md5">MD5</option>
+                <option value="sha256">SHA256</option>
+                <option value="sha1">SHA1</option>
+                <option value="sha512">SHA512</option>
+            </select>
+        </div>
+
+        <!-- 计算按钮 -->
+        <button id="calcBtn">开始计算</button>
+
+        <!-- 结果展示 -->
+        <div class="result" id="resultArea" style="display: none;">
+            <h3 id="resultTitle"></h3>
+            <p id="resultContent"></p>
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="stats" id="statsArea" style="display: none;">
+            <h3>统计信息</h3>
+            <p>总计算次数：<span id="totalCount">0</span></p>
+        </div>
+
+        <!-- 查看历史记录 -->
+        <button id="viewRecordsBtn" style="margin-top: 15px;">查看历史计算记录</button>
+        <div class="records" id="recordsArea" style="display: none;">
+            <h3>历史计算记录</h3>
+            <div id="recordsList"></div>
+        </div>
+    </div>
+
+    <script>
+        // 切换输入类型（字符串/文件）
+        const inputTypeEl = document.getElementById('inputType');
+        const stringGroupEl = document.getElementById('stringInputGroup');
+        const fileGroupEl = document.getElementById('fileInputGroup');
+        const fileNameEl = document.getElementById('fileName');
+        const inputFileEl = document.getElementById('inputFile');
+        
+        inputTypeEl.addEventListener('change', () => {
+            if (inputTypeEl.value === 'string') {
+                stringGroupEl.style.display = 'block';
+                fileGroupEl.style.display = 'none';
+            } else {
+                stringGroupEl.style.display = 'none';
+                fileGroupEl.style.display = 'block';
+                fileNameEl.textContent = '';
+            }
+        });
+
+        // 显示选中的文件名
+        inputFileEl.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                fileNameEl.textContent = `已选择：${e.target.files[0].name}（大小：${(e.target.files[0].size / 1024).toFixed(2)}KB）`;
+            } else {
+                fileNameEl.textContent = '';
+            }
+        });
+
+        // 获取页面元素
+        const calcBtn = document.getElementById('calcBtn');
+        const resultArea = document.getElementById('resultArea');
+        const resultTitle = document.getElementById('resultTitle');
+        const resultContent = document.getElementById('resultContent');
+        const statsArea = document.getElementById('statsArea');
+        const totalCountEl = document.getElementById('totalCount');
+        const viewRecordsBtn = document.getElementById('viewRecordsBtn');
+        const recordsArea = document.getElementById('recordsArea');
+        const recordsList = document.getElementById('recordsList');
+        const inputStrEl = document.getElementById('inputStr');
+        const algorithmEl = document.getElementById('algorithm');
+
+        // 计算按钮点击事件
+        calcBtn.addEventListener('click', async () => {
+            calcBtn.disabled = true;
+            calcBtn.textContent = '计算中...';
+            resultArea.style.display = 'none';
+            statsArea.style.display = 'none';
+            recordsArea.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('input_type', inputTypeEl.value);
+            formData.append('algorithm', algorithmEl.value); // 传递后端需要的英文算法名
+
+            if (inputTypeEl.value === 'string') {
+                const inputStr = inputStrEl.value.trim();
+                if (!inputStr) {
+                    showResult('失败', '请输入有效的字符串', false);
+                    resetBtnState();
+                    return;
+                }
+                formData.append('content', inputStr);
+            } else {
+                const file = inputFileEl.files[0];
+                if (!file) {
+                    showResult('失败', '请选择需要计算的文件', false);
+                    resetBtnState();
+                    return;
+                }
+                formData.append('file', file);
+                formData.append('content', file.name);
+            }
+
+            try {
+                // 调用后端接口（替换为你的域名）
+                const response = await fetch('https://2432571557.pythonanywhere.com/calculate', {
+                    method: 'POST',
+                    body: formData,
+                    timeout: 30000
+                });
+
+                if (!response.ok) throw new Error(`网络错误：${response.status}`);
+                const data = await response.json();
+
+                if (data.成功) { // 适配后端的中文字段
+                    showResult('成功', `${algorithmEl.options[algorithmEl.selectedIndex].text} 哈希值：\n${data.哈希值}`, true);
+                    statsArea.style.display = 'block';
+                    totalCountEl.textContent = data.总次数;
+                } else {
+                    showResult('失败', data.提示信息 || '计算过程出错', false);
+                }
+            } catch (err) {
+                showResult('失败', `请求错误：${err.message}（检查后端是否已启动）`, false);
+            } finally {
+                resetBtnState();
+            }
+        });
+
+        // 查看历史记录按钮事件（修复时间显示+序号逻辑）
+        viewRecordsBtn.addEventListener('click', async () => {
+            recordsList.innerHTML = '<p>加载中...</p>';
+            recordsArea.style.display = 'block';
+
+            try {
+                const response = await fetch('https://2432571557.pythonanywhere.com/get-records', {
+                    timeout: 10000
+                });
+
+                if (!response.ok) throw new Error(`网络错误：${response.status}`);
+                const data = await response.json();
+
+                if (data.成功) { // 适配后端的中文字段
+                    if (data.记录列表.length === 0) {
+                        recordsList.innerHTML = '<p style="color:#7f8c8d;">暂无历史计算记录</p>';
+                        return;
+                    }
+
+                    // 修复1：按时间倒序排序（最新的在前面）
+                    const sortedRecords = [...data.记录列表].sort((a, b) => 
+                        new Date(b.时间) - new Date(a.时间)
+                    );
+                    let recordsHtml = '';
+                    // 修复2：用index+1作为序号（正确显示第N次）
+                    sortedRecords.forEach((item, index) => {
+                        recordsHtml += `
+                        <div>
+                            <p>
+                                <strong>第${index + 1}次</strong>
+                                <span class="record-time">${item.时间}</span> <!-- 优化时间显示样式 -->
+                            </p>
+                            <p>输入类型：${item.输入类型}</p>
+                            <p>输入内容：${item.内容}</p>
+                            <p>算法：${item.算法}</p>
+                            <p style="word-break: break-all;">哈希值：${item.哈希值}</p>
+                        </div>
+                        `;
+                    });
+                    recordsList.innerHTML = recordsHtml;
+                } else {
+                    recordsList.innerHTML = `<p class="error">获取记录失败：${data.提示信息}</p>`;
+                }
+            } catch (err) {
+                recordsList.innerHTML = `<p class="error">请求错误：${err.message}（检查后端是否已启动）</p>`;
+            }
+        });
+
+        // 显示结果工具函数
+        function showResult(title, content, isSuccess) {
+            resultArea.style.display = 'block';
+            resultTitle.textContent = `计算${title}`;
+            resultTitle.className = isSuccess ? 'success' : 'error';
+            resultContent.textContent = content;
+            resultContent.className = isSuccess ? 'success' : 'error';
+            resultContent.style.whiteSpace = 'pre-wrap';
+        }
+
+        // 重置按钮状态函数
+        function resetBtnState() {
+            calcBtn.disabled = false;
+            calcBtn.textContent = '开始计算';
+        }
+
+        // 回车键触发计算
+        inputStrEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && inputTypeEl.value === 'string') {
+                calcBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
